@@ -1,0 +1,11 @@
+# binaries
+sasswall
+
+# editor
+.DS_Store
+.idea/
+.vscode/
+
+# local artifacts
+*.log
+/tmp/
