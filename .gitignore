@@ -9,3 +9,7 @@ sasswall
 # local artifacts
 *.log
 /tmp/
+
+# build artifacts
+/dist/
+
