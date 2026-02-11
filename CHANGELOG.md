@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - 
 
+## [0.1.1] - 2026-02-11
+
+### Changed
+- Updated README badges/links to point at the published GitHub Releases and changelog.
+
 ## [0.1.0] - 2026-02-11
 
 ### Added
