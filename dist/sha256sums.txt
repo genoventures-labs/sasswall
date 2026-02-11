@@ -1,0 +1,2 @@
+34cb17ba1b32fccf2694cd4ccb1a384f4b6cfe284eb10ccfea380eda3f40d6e1  sasswall_linux_amd64
+6fe51da2871eea3bbe1ac19a61cb934f1af4b9072f913fba561fc7741c461ff9  sasswall_linux_arm64
