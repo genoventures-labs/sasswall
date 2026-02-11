@@ -2,12 +2,12 @@
 
 A lightweight, daemonized HTTP “noise sink” that absorbs hostile/scanner traffic, wastes attacker time, and generates high-signal telemetry—while keeping production applications quieter and harder to fingerprint.
 
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](#)
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Platform](https://img.shields.io/badge/Platform-Linux-blue)](#)
 [![Service](https://img.shields.io/badge/systemd-supported-6c757d)](#)
 [![Security](https://img.shields.io/badge/Security-Defense--in--Depth-important)](#)
-
-> Note: Replace placeholder badges/links with your repo, CI, and release pages once Sasswall is published.
+[![Release](https://img.shields.io/github/v/release/cassianwolfe/sasswall?display_name=tag&sort=semver)](https://github.com/cassianwolfe/sasswall/releases)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-informational)](CHANGELOG.md)
 
 ---
 
