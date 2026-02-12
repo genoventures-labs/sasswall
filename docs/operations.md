@@ -21,6 +21,32 @@ Key fields emitted per request:
 - `persona`: `sister|it|hr` (configurable)
 - `strikes`, `denied`, `deny_until`
 - `limited`: whether a request was rate limited
+- `session_id`, `sequence_score`, `profile_id`
+- `deception_variant`, `challenge_issued`, `decoy_success`
+- `canary_token_id`, `fairness_step`
+
+## Metrics
+
+When `metrics.enabled=true`, Sasswall exposes Prometheus text metrics on a dedicated listener:
+
+```bash
+curl -s http://127.0.0.1:9182/metrics
+```
+
+Core metrics include category/status counters and tarpit latency buckets.
+
+## Canary verification (offline)
+
+For canary-enabled deployments, verify a token offline:
+
+```bash
+sasswall verify-canary \
+  --secret 'YOUR_SECRET' \
+  --token 'TOKEN' \
+  --session 'SESSION_ID' \
+  --path '/.env' \
+  --n 1
+```
 
 ## Config changes
 
@@ -33,7 +59,7 @@ systemctl reload sasswall
 
 Notes:
 - Most settings reload immediately.
-- `listen` requires restart.
+- `listen` and `metrics.listen` require restart.
 
 ## Troubleshooting
 

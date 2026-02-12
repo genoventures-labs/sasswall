@@ -86,6 +86,19 @@ Intentionally slows responses using:
 - returns `429` with `Retry-After` when limited
 - returns `503` when saturated
 
+### Threat Theater (defensive deception mode)
+Sasswall v0.2.0 adds a configurable defensive deception layer:
+
+- deterministic deceptive surface packs (`php-admin`, `wp-old`, `generic-enterprise`)
+- session narratives (`observe -> engage -> sink`) with sequence-scored escalation
+- recon-poison headers and fake breadcrumbs on hostile probes
+- adaptive fairness rate step-down before hard deny
+- optional canary artifact tokenization (offline verification only)
+- optional delayed-success illusions (controlled fake `200` for hostile categories only)
+- optional challenge gates (`cookie302` or `pow-lite`)
+
+High-risk features are opt-in by default.
+
 ---
 
 ## Architecture
@@ -189,6 +202,63 @@ rate_limit:
   honey_rpm: 40
   scanner_rpm: 60
   denied_rpm: 15
+
+threat_theater:
+  enabled: false
+  profile: balanced
+
+deception:
+  surface_packs:
+    enabled: true
+    rotate_every: 15m
+    allowed_categories: [scanner, honey, denied]
+  fake_breadcrumbs:
+    enabled: true
+  recon_poison_headers:
+    enabled: true
+    header_set:
+      Server: edge-gateway
+      X-Powered-By: PHP/7.4
+  delayed_success:
+    enabled: false
+    max_ratio: 0.10
+    allowed_paths:
+      - /.env
+      - /.git/config
+      - /wp-login.php
+      - /phpmyadmin
+      - "*phpmyadmin*"
+      - "*.env*"
+
+session_narrative:
+  enabled: true
+  ttl: 30m
+  style: subtle
+
+fingerprints:
+  enabled: true
+  library_file: ""
+
+adaptive_rate:
+  enabled: true
+  degrade_steps: 3
+  recover_after: 20m
+
+challenge:
+  enabled: false
+  mode: cookie302
+  allowed_categories: [scanner, honey]
+
+canary:
+  enabled: false
+  secret: ""
+  honey_file_templates:
+    - "DB_PASSWORD=__TOKEN__"
+    - "AWS_SECRET_ACCESS_KEY=__TOKEN__"
+
+metrics:
+  enabled: true
+  listen: 127.0.0.1:9182
 ```
 
 Honey path matching rules:
@@ -215,7 +285,8 @@ Reloads without restart:
 - honey paths
 - tarpit timings
 - escalation and rate limits
-- phrases file content
+- fingerprints library file
+- threat theater/deception/challenge/canary behavior
 
 Requires restart:
 
@@ -265,10 +336,21 @@ Log entries include:
 - `persona`
 - `strikes`, `denied`, `deny_until`
 - `limited`
+- `session_id`, `sequence_score`, `profile_id`
+- `deception_variant`, `challenge_issued`, `decoy_success`
+- `canary_token_id`, `fairness_step`
 
 Responses include:
 
 - `X-Sasswall-Category: <category>`
+- `X-Sasswall-Profile: <profile-id>`
+- `X-Sasswall-Narrative: <observe|engage|sink>`
+
+Metrics endpoint (`Prometheus` text format):
+
+```bash
+curl -s http://127.0.0.1:9182/metrics
+```
 
 ---
 
@@ -282,3 +364,9 @@ Recommended defense-in-depth:
 - strict reverse-proxy host routing (no default proxy-to-app)
 - optional CDN/WAF
 - log forwarding to SIEM and alerting pipelines
+
+Legal/safety boundary:
+
+- Sasswall performs **defensive inbound deception only**.
+- No exploitation, no outbound attacks, no interaction with attacker infrastructure.
+- Canary tokens are generated and logged locally; exfiltration detection is expected to happen in external SIEM/workflows.

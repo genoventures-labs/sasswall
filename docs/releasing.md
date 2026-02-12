@@ -2,6 +2,10 @@
 
 Sasswall updates on hosts by consuming **GitHub Releases** that contain stable asset names.
 
+Release notes for every version must follow:
+
+- `docs/release-notes-template.md`
+
 ## Required release assets
 
 Each release should include:
@@ -29,15 +33,16 @@ Then push a tag matching `v*` and GitHub Actions will build and publish the rele
 ## Option B: manual release
 
 1. Update `CHANGELOG.md` (move items from `[Unreleased]` into the new version section).
-2. Commit changes.
-3. Create and push a tag:
+2. Draft release notes using `docs/release-notes-template.md` and save as `dist/release-notes-vX.Y.Z.md`.
+3. Commit changes.
+4. Create and push a tag:
 
 ```bash
 git tag v0.1.1
 git push origin v0.1.1
 ```
 
-4. Build and publish release assets (example using `gh`):
+5. Build and publish release assets (example using `gh`):
 
 ```bash
 VERSION=v0.1.1
@@ -48,7 +53,7 @@ GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=${VER
 (cd dist && sha256sum sasswall_linux_* > sha256sums.txt)
 
 gh release create "${VERSION}" dist/sasswall_linux_amd64 dist/sasswall_linux_arm64 dist/sha256sums.txt \
-  --repo OWNER/REPO -t "${VERSION}" -n "Sasswall ${VERSION}"
+  --repo OWNER/REPO -t "${VERSION}" -F "dist/release-notes-${VERSION}.md"
 ```
 
 ## Version metadata
