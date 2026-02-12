@@ -33,6 +33,7 @@ type Config struct {
 	AdaptiveRate     AdaptiveRate     `yaml:"adaptive_rate"`
 	Challenge        Challenge        `yaml:"challenge"`
 	Metrics          Metrics          `yaml:"metrics"`
+	Presence         Presence         `yaml:"presence"`
 }
 
 type PersonaConfig struct {
@@ -73,6 +74,27 @@ type RateLimit struct {
 type ThreatTheater struct {
 	Enabled bool   `yaml:"enabled"`
 	Profile string `yaml:"profile"`
+}
+
+type Presence struct {
+	Enabled           bool            `yaml:"enabled"`
+	SignalStyle       string          `yaml:"signal_style"`
+	LockOnThreshold   int             `yaml:"lock_on_threshold"`
+	PressureThreshold int             `yaml:"pressure_threshold"`
+	CoherenceWindow   time.Duration   `yaml:"coherence_window"`
+	HeaderSignature   HeaderSignature `yaml:"header_signature"`
+	TimingSignature   TimingSignature `yaml:"timing_signature"`
+	PressureActions   []string        `yaml:"pressure_actions"`
+}
+
+type HeaderSignature struct {
+	Enabled  bool          `yaml:"enabled"`
+	Rotation time.Duration `yaml:"rotation"`
+}
+
+type TimingSignature struct {
+	Enabled      bool `yaml:"enabled"`
+	JitterBandMS int  `yaml:"jitter_band_ms"`
 }
 
 type Deception struct {
@@ -196,6 +218,16 @@ func Default() Config {
 		AdaptiveRate:     AdaptiveRate{Enabled: true, DegradeSteps: 3, RecoverAfter: 20 * time.Minute},
 		Challenge:        Challenge{Enabled: false, Mode: "cookie302", AllowedCategories: []string{"scanner", "honey"}},
 		Metrics:          Metrics{Enabled: true, Listen: "127.0.0.1:9182"},
+		Presence: Presence{
+			Enabled:           false,
+			SignalStyle:       "subtle",
+			LockOnThreshold:   4,
+			PressureThreshold: 8,
+			CoherenceWindow:   30 * time.Minute,
+			HeaderSignature:   HeaderSignature{Enabled: true, Rotation: 15 * time.Minute},
+			TimingSignature:   TimingSignature{Enabled: true, JitterBandMS: 120},
+			PressureActions:   []string{"tarpit_boost", "fairness_stepup", "challenge_hint"},
+		},
 	}
 }
 
@@ -237,8 +269,8 @@ func (c *Config) Validate() error {
 	if c.Canary.Enabled && strings.TrimSpace(c.Canary.Secret) == "" {
 		return ErrCanarySecretRequired
 	}
-	if !slices.Contains([]string{"conservative", "balanced", "aggressive"}, c.ThreatTheater.Profile) {
-		return errors.New("threat_theater.profile must be conservative|balanced|aggressive")
+	if !slices.Contains([]string{"conservative", "balanced", "aggressive", "presence"}, c.ThreatTheater.Profile) {
+		return errors.New("threat_theater.profile must be conservative|balanced|aggressive|presence")
 	}
 	if !slices.Contains([]string{"subtle", "theatrical"}, c.SessionNarrative.Style) {
 		return errors.New("session_narrative.style must be subtle|theatrical")
@@ -251,6 +283,24 @@ func (c *Config) Validate() error {
 	}
 	if c.Metrics.Enabled && c.Metrics.Listen == "" {
 		return errors.New("metrics.listen is required when metrics.enabled=true")
+	}
+	if !slices.Contains([]string{"subtle", "balanced", "theatrical"}, c.Presence.SignalStyle) {
+		return errors.New("presence.signal_style must be subtle|balanced|theatrical")
+	}
+	if c.Presence.LockOnThreshold < 1 {
+		return errors.New("presence.lock_on_threshold must be >= 1")
+	}
+	if c.Presence.PressureThreshold <= c.Presence.LockOnThreshold {
+		return errors.New("presence.pressure_threshold must be > presence.lock_on_threshold")
+	}
+	if c.Presence.CoherenceWindow <= 0 {
+		return errors.New("presence.coherence_window must be > 0")
+	}
+	if c.Presence.HeaderSignature.Enabled && c.Presence.HeaderSignature.Rotation <= 0 {
+		return errors.New("presence.header_signature.rotation must be > 0 when enabled")
+	}
+	if c.Presence.TimingSignature.Enabled && c.Presence.TimingSignature.JitterBandMS < 0 {
+		return errors.New("presence.timing_signature.jitter_band_ms must be >= 0")
 	}
 	return nil
 }

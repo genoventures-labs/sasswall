@@ -24,6 +24,7 @@ Key fields emitted per request:
 - `session_id`, `sequence_score`, `profile_id`
 - `deception_variant`, `challenge_issued`, `decoy_success`
 - `canary_token_id`, `fairness_step`
+- `presence_state`, `presence_transition`, `presence_signature_id`, `pressure_action_applied`
 
 ## Metrics
 
@@ -34,6 +35,11 @@ curl -s http://127.0.0.1:9182/metrics
 ```
 
 Core metrics include category/status counters and tarpit latency buckets.
+Presence mode metrics include:
+
+- `sasswall_presence_state_total{state}`
+- `sasswall_presence_transition_total{from,to}`
+- `sasswall_presence_pressure_action_total{action}`
 
 ## Canary verification (offline)
 

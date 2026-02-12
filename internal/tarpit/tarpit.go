@@ -1,6 +1,8 @@
 package tarpit
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"math/rand"
 	"time"
 )
@@ -27,6 +29,10 @@ func New(cfg Config) *Calculator {
 }
 
 func (c *Calculator) Delay(sequenceScore int, isHoney bool, strikes int) time.Duration {
+	return c.DelayWithPresence(sequenceScore, isHoney, strikes, 1.0, "", false, 0)
+}
+
+func (c *Calculator) DelayWithPresence(sequenceScore int, isHoney bool, strikes int, presenceMultiplier float64, signatureID string, timingSignature bool, jitterBandMS int) time.Duration {
 	base := c.randomBetween(c.cfg.DelayMin, c.cfg.DelayMax)
 	if isHoney {
 		base += c.cfg.HoneyBoost
@@ -41,9 +47,18 @@ func (c *Calculator) Delay(sequenceScore int, isHoney bool, strikes int) time.Du
 	case sequenceScore >= 4:
 		multiplier = 1.4 // +40%
 	}
+	if presenceMultiplier > 0 {
+		multiplier *= presenceMultiplier
+	}
 	total := time.Duration(float64(base) * multiplier)
+	if timingSignature && jitterBandMS > 0 && signatureID != "" {
+		total += c.signatureJitter(signatureID, jitterBandMS)
+	}
 	if total > MaxTotalDelay {
 		return MaxTotalDelay
+	}
+	if total < 0 {
+		return 0
 	}
 	return total
 }
@@ -54,4 +69,12 @@ func (c *Calculator) randomBetween(min, max time.Duration) time.Duration {
 	}
 	d := max - min
 	return min + time.Duration(c.rng.Int63n(int64(d)+1))
+}
+
+func (c *Calculator) signatureJitter(signatureID string, bandMS int) time.Duration {
+	h := sha256.Sum256([]byte(signatureID))
+	v := binary.BigEndian.Uint32(h[:4])
+	span := int(v % uint32((bandMS*2)+1))
+	jitterMS := span - bandMS
+	return time.Duration(jitterMS) * time.Millisecond
 }

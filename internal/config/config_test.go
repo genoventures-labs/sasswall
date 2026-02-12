@@ -28,3 +28,19 @@ func TestValidateRatioBounds(t *testing.T) {
 		t.Fatalf("expected ratio validation error")
 	}
 }
+
+func TestValidatePresenceProfile(t *testing.T) {
+	cfg := Default()
+	cfg.ThreatTheater.Profile = "presence"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected presence profile to validate: %v", err)
+	}
+}
+
+func TestValidatePresenceSignalStyle(t *testing.T) {
+	cfg := Default()
+	cfg.Presence.SignalStyle = "bad"
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("expected presence.signal_style validation error")
+	}
+}

@@ -45,3 +45,43 @@ func TestHostileRequestGetsSDSAHeaders(t *testing.T) {
 		t.Fatalf("expected non-empty response body")
 	}
 }
+
+func TestPresenceHeaderHostileOnly(t *testing.T) {
+	cfg := config.Default()
+	cfg.Tarpit.DelayMin = 1 * time.Millisecond
+	cfg.Tarpit.DelayMax = 2 * time.Millisecond
+	cfg.Honey.Boost = 0
+	cfg.ThreatTheater.Enabled = true
+	cfg.ThreatTheater.Profile = "presence"
+	cfg.Presence.Enabled = true
+
+	srv, err := New(&cfg, telemetry.New(os.Stdout), metrics.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostileReq := httptest.NewRequest(http.MethodGet, "http://sasswall.local/.env", nil)
+	hostileReq.Header.Set("User-Agent", "nmap")
+	hostileW := httptest.NewRecorder()
+	srv.handle(hostileW, hostileReq)
+	if hostileW.Result().Header.Get("X-Sasswall-Presence") == "" {
+		t.Fatalf("expected presence header for hostile traffic")
+	}
+
+	normalReq := httptest.NewRequest(http.MethodGet, "http://sasswall.local/", nil)
+	normalReq.Header.Set("User-Agent", "mozilla")
+	normalW := httptest.NewRecorder()
+	srv.handle(normalW, normalReq)
+	if normalW.Result().Header.Get("X-Sasswall-Presence") != "" {
+		t.Fatalf("did not expect presence header for normal traffic")
+	}
+}
+
+func TestPresenceSignatureDeterministic(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	a := derivePresenceSignature("session-1", 30*time.Minute, now)
+	b := derivePresenceSignature("session-1", 30*time.Minute, now)
+	if a != b {
+		t.Fatalf("expected deterministic signature")
+	}
+}

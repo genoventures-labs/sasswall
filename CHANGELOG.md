@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - 
 
+## [0.3.0] - 2026-02-12
+
+### Added
+- Presence profile for Threat Theater (`threat_theater.profile=presence`) with opt-in `presence.enabled` gate.
+- Presence configuration block with signal style, lock-on/pressure thresholds, coherence window, header/timing signatures, and ordered pressure actions.
+- Hostile-only presence response header: `X-Sasswall-Presence: observe|lock-on|pressure`.
+- Presence telemetry fields: `presence_state`, `presence_transition`, `presence_signature_id`, and `pressure_action_applied`.
+- Presence metrics: `sasswall_presence_state_total`, `sasswall_presence_transition_total`, and `sasswall_presence_pressure_action_total`.
+- Signature-aware deception pack selection for coherent per-session identity.
+- Presence state helper tests, signature determinism tests, and hostile-only presence header integration coverage.
+
+### Changed
+- Tarpit delay calculator extended with presence multiplier and deterministic timing jitter support.
+- Adaptive limiter extended with bounded pressure bias (`fairness_stepup`) for pressure state.
+- Threat Theater profile validation now accepts `presence`.
+- README, operations, and security docs expanded for Predator Presence mode configuration and observability.
+
+### Fixed
+- N/A
+
 ## [0.2.0] - 2026-02-12
 
 ### Added

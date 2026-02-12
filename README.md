@@ -99,6 +99,14 @@ Sasswall v0.2.0 adds a configurable defensive deception layer:
 
 High-risk features are opt-in by default.
 
+### Predator Presence mode (opt-in)
+`presence` is an opt-in Threat Theater profile that creates a coherent hostile-session shift:
+
+- state progression: `observe -> lock-on -> pressure`
+- deterministic session signature over a coherence window
+- pressure actions applied in configured order
+- hostile-only response header: `X-Sasswall-Presence`
+
 ---
 
 ## Architecture
@@ -206,6 +214,23 @@ rate_limit:
 threat_theater:
   enabled: false
   profile: balanced
+
+presence:
+  enabled: false
+  signal_style: subtle
+  lock_on_threshold: 4
+  pressure_threshold: 8
+  coherence_window: 30m
+  header_signature:
+    enabled: true
+    rotation: 15m
+  timing_signature:
+    enabled: true
+    jitter_band_ms: 120
+  pressure_actions:
+    - tarpit_boost
+    - fairness_stepup
+    - challenge_hint
 
 deception:
   surface_packs:
@@ -339,12 +364,14 @@ Log entries include:
 - `session_id`, `sequence_score`, `profile_id`
 - `deception_variant`, `challenge_issued`, `decoy_success`
 - `canary_token_id`, `fairness_step`
+- `presence_state`, `presence_transition`, `presence_signature_id`, `pressure_action_applied`
 
 Responses include:
 
 - `X-Sasswall-Category: <category>`
 - `X-Sasswall-Profile: <profile-id>`
 - `X-Sasswall-Narrative: <observe|engage|sink>`
+- `X-Sasswall-Presence: <observe|lock-on|pressure>` (hostile categories, presence mode only)
 
 Metrics endpoint (`Prometheus` text format):
 

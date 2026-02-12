@@ -41,7 +41,7 @@ func New(cfg Config) *Limiter {
 	return &Limiter{cfg: cfg, buckets: map[string]*bucket{}}
 }
 
-func (l *Limiter) Allow(ip string, category classify.Category, score int, now time.Time) Decision {
+func (l *Limiter) Allow(ip string, category classify.Category, score int, now time.Time, pressureBias int) Decision {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	k := fmt.Sprintf("%s:%s", ip, category)
@@ -62,6 +62,12 @@ func (l *Limiter) Allow(ip string, category classify.Category, score int, now ti
 	if l.cfg.Adaptive {
 		if score >= 8 && b.step < l.cfg.DegradeMax {
 			b.step++
+		}
+		if pressureBias > 0 && b.step < l.cfg.DegradeMax {
+			b.step += pressureBias
+			if b.step > l.cfg.DegradeMax {
+				b.step = l.cfg.DegradeMax
+			}
 		}
 		if now.Sub(b.lastSeen) > l.cfg.RecoverAfter && b.step > 0 {
 			b.step--

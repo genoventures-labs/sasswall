@@ -22,6 +22,8 @@ Threat Theater features are strictly defensive and inbound:
 
 Deception mechanisms (surface packs, breadcrumbs, delayed-success illusions, and challenge gates) are designed to increase attacker uncertainty and cost while preserving legal/operational safety.
 
+Predator Presence mode is hostile-category scoped and opt-in. It adds session-coherent pressure behavior but does not perform active counter-attack actions.
+
 ## Update integrity
 
 The host-side updater can be configured to require checksums (`SASSWALL_REQUIRE_CHECKSUMS=true`).

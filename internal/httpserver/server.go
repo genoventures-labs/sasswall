@@ -2,6 +2,8 @@ package httpserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -154,6 +156,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	ua := r.UserAgent()
 	sessionID := session.SessionKey(ip, ua, now)
+	prevStory := s.sessions.Current(sessionID)
 	_, denied, denyUntil := s.strikes.State(ip, now)
 	cResult := classifier.Classify(r, denied)
 	story := s.sessions.Update(sessionID, cResult.ScoreDelta, now)
@@ -170,23 +173,73 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rlDecision := s.limiter.Allow(ip, cResult.Category, story.Score, now)
+	hostile := cResult.Category == classify.CategoryScanner || cResult.Category == classify.CategoryHoney || cResult.Category == classify.CategoryDenied
+	presenceEnabled := cfg.ThreatTheater.Enabled && cfg.ThreatTheater.Profile == "presence" && cfg.Presence.Enabled && hostile
+	presenceState := session.PresenceForScore(story.Score, cfg.Presence.LockOnThreshold, cfg.Presence.PressureThreshold, presenceEnabled)
+	prevPresenceState := session.PresenceForScore(prevStory.Score, cfg.Presence.LockOnThreshold, cfg.Presence.PressureThreshold, presenceEnabled)
+	presenceTransition := session.PresenceTransition(prevPresenceState, presenceState)
+	presenceSignatureID := ""
+	if presenceEnabled {
+		presenceSignatureID = derivePresenceSignature(story.SessionID, cfg.Presence.CoherenceWindow, now)
+		s.metrics.Inc("sasswall_presence_state_total", map[string]string{"state": string(presenceState)})
+		if presenceTransition != "none" {
+			from, to := parsePresenceTransition(presenceTransition)
+			s.metrics.Inc("sasswall_presence_transition_total", map[string]string{"from": from, "to": to})
+		}
+	}
+
+	pressureBias := 0
+	presenceMultiplier := 1.0
+	challengeHint := false
+	pressureActionApplied := "none"
+	if presenceEnabled && presenceState == session.PresencePressure {
+		actions := make([]string, 0, len(cfg.Presence.PressureActions))
+		for _, action := range cfg.Presence.PressureActions {
+			switch action {
+			case "tarpit_boost":
+				presenceMultiplier = 1.35
+				actions = append(actions, action)
+			case "fairness_stepup":
+				pressureBias = 1
+				actions = append(actions, action)
+			case "challenge_hint":
+				challengeHint = true
+				actions = append(actions, action)
+			}
+		}
+		if len(actions) > 0 {
+			pressureActionApplied = strings.Join(actions, ",")
+			for _, action := range actions {
+				s.metrics.Inc("sasswall_presence_pressure_action_total", map[string]string{"action": action})
+			}
+		}
+	}
+
+	rlDecision := s.limiter.Allow(ip, cResult.Category, story.Score, now, pressureBias)
 	if !rlDecision.Allowed {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", rlDecision.RetryAfter))
 		w.Header().Set("X-Sasswall-Category", string(cResult.Category))
+		if presenceEnabled {
+			w.Header().Set("X-Sasswall-Presence", string(presenceState))
+		}
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		s.emitLog(start, telemetry.Event{
 			IP: ip, UA: ua, Host: r.Host, Path: r.URL.Path,
 			Category: string(cResult.Category), Persona: prs.Pick(cResult.Category),
 			Denied: denied, DenyUntil: denyUntil.Format(time.RFC3339), Limited: true,
 			SessionID: story.SessionID, SequenceScore: story.Score,
-			FairnessStep: rlDecision.Step,
+			FairnessStep:  rlDecision.Step,
+			PresenceState: string(presenceState), PresenceTransition: presenceTransition,
+			PresenceSignatureID: presenceSignatureID, PressureActionApplied: pressureActionApplied,
 		})
 		s.metrics.Inc("sasswall_requests_total", map[string]string{"status": "429", "category": string(cResult.Category)})
 		return
 	}
 
 	pack := dec.Pick(story.SessionID, cfg.Deception.SurfacePacks.RotateEvery, now)
+	if presenceEnabled {
+		pack = dec.PickWithSignature(story.SessionID, presenceSignatureID, cfg.Deception.SurfacePacks.RotateEvery, now)
+	}
 	profileID := pack.ID
 	deceptionVariant := "none"
 	decoySuccess := false
@@ -198,6 +251,10 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		for k, v := range cfg.Deception.ReconPoison.HeaderSet {
 			w.Header().Set(k, v)
+		}
+		if presenceEnabled && cfg.Presence.HeaderSignature.Enabled {
+			headerSig := derivePresenceSignature(story.SessionID, cfg.Presence.HeaderSignature.Rotation, now)
+			w.Header().Set("X-Edge-Cluster", headerSignatureValue(headerSig))
 		}
 	}
 
@@ -214,7 +271,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 				http.SetCookie(w, &http.Cookie{Name: "sw_challenge", Value: "ok", MaxAge: 120, HttpOnly: true, Path: "/"})
 				http.Redirect(w, r, r.URL.String(), http.StatusFound)
 				s.metrics.Inc("sasswall_challenge_total", map[string]string{"mode": cfg.Challenge.Mode, "result": "issued"})
-				s.emitLog(start, telemetry.Event{IP: ip, UA: ua, Host: r.Host, Path: r.URL.Path, Category: string(cResult.Category), Persona: prs.Pick(cResult.Category), SessionID: story.SessionID, SequenceScore: story.Score, ProfileID: profileID, ChallengeIssued: challengeIssued, FairnessStep: rlDecision.Step})
+				s.emitLog(start, telemetry.Event{IP: ip, UA: ua, Host: r.Host, Path: r.URL.Path, Category: string(cResult.Category), Persona: prs.Pick(cResult.Category), SessionID: story.SessionID, SequenceScore: story.Score, ProfileID: profileID, ChallengeIssued: challengeIssued, FairnessStep: rlDecision.Step, PresenceState: string(presenceState), PresenceTransition: presenceTransition, PresenceSignatureID: presenceSignatureID, PressureActionApplied: pressureActionApplied})
 				return
 			}
 		case "pow-lite":
@@ -226,7 +283,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("X-Sasswall-Challenge", "pow-lite")
 				http.Error(w, "challenge required", http.StatusTooManyRequests)
 				s.metrics.Inc("sasswall_challenge_total", map[string]string{"mode": cfg.Challenge.Mode, "result": "issued"})
-				s.emitLog(start, telemetry.Event{IP: ip, UA: ua, Host: r.Host, Path: r.URL.Path, Category: string(cResult.Category), Persona: prs.Pick(cResult.Category), SessionID: story.SessionID, SequenceScore: story.Score, ProfileID: profileID, ChallengeIssued: challengeIssued, Limited: true, FairnessStep: rlDecision.Step})
+				s.emitLog(start, telemetry.Event{IP: ip, UA: ua, Host: r.Host, Path: r.URL.Path, Category: string(cResult.Category), Persona: prs.Pick(cResult.Category), SessionID: story.SessionID, SequenceScore: story.Score, ProfileID: profileID, ChallengeIssued: challengeIssued, Limited: true, FairnessStep: rlDecision.Step, PresenceState: string(presenceState), PresenceTransition: presenceTransition, PresenceSignatureID: presenceSignatureID, PressureActionApplied: pressureActionApplied})
 				return
 			}
 		}
@@ -246,6 +303,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			decoySuccess = true
 		}
 	}
+	body = applyPresenceStyle(body, cfg.Presence.SignalStyle, presenceState)
 
 	if cfg.Canary.Enabled && cnr != nil {
 		for _, tmpl := range cfg.Canary.HoneyFileTemplates {
@@ -268,12 +326,26 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.metrics.Inc("sasswall_delayed_success_total", map[string]string{"category": string(cResult.Category)})
 	}
 
-	delay := trp.Delay(story.Score, cResult.Honey, story.Score/3)
+	delay := trp.DelayWithPresence(
+		story.Score,
+		cResult.Honey,
+		story.Score/3,
+		presenceMultiplier,
+		presenceSignatureID,
+		presenceEnabled && cfg.Presence.TimingSignature.Enabled,
+		cfg.Presence.TimingSignature.JitterBandMS,
+	)
 	time.Sleep(delay)
 
 	w.Header().Set("X-Sasswall-Category", string(cResult.Category))
 	w.Header().Set("X-Sasswall-Profile", profileID)
 	w.Header().Set("X-Sasswall-Narrative", string(story.Phase))
+	if presenceEnabled {
+		w.Header().Set("X-Sasswall-Presence", string(presenceState))
+	}
+	if challengeHint {
+		w.Header().Set("X-Sasswall-Challenge-Hint", "elevated-monitoring")
+	}
 	if status == http.StatusTooManyRequests {
 		w.Header().Set("Retry-After", "2")
 	}
@@ -290,6 +362,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		ProfileID: profileID, DeceptionVariant: deceptionVariant,
 		ChallengeIssued: challengeIssued, DecoySuccess: decoySuccess,
 		CanaryTokenID: canaryTokenID, FairnessStep: rlDecision.Step,
+		PresenceState: string(presenceState), PresenceTransition: presenceTransition,
+		PresenceSignatureID: presenceSignatureID, PressureActionApplied: pressureActionApplied,
 	})
 }
 
@@ -397,4 +471,44 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func derivePresenceSignature(sessionID string, coherenceWindow time.Duration, now time.Time) string {
+	if coherenceWindow <= 0 {
+		coherenceWindow = 30 * time.Minute
+	}
+	bucket := now.Unix() / int64(coherenceWindow.Seconds())
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", sessionID, bucket)))
+	return hex.EncodeToString(sum[:6])
+}
+
+func parsePresenceTransition(v string) (string, string) {
+	parts := strings.SplitN(v, "_to_", 2)
+	if len(parts) != 2 {
+		return "unknown", "unknown"
+	}
+	return parts[0], parts[1]
+}
+
+func headerSignatureValue(signatureID string) string {
+	if len(signatureID) < 2 {
+		return "cluster-a"
+	}
+	clusters := []string{"cluster-a", "cluster-b", "cluster-c"}
+	idx := int(signatureID[0]+signatureID[1]) % len(clusters)
+	return clusters[idx]
+}
+
+func applyPresenceStyle(body, style string, state session.PresenceState) string {
+	if state == "" || style == "subtle" {
+		return body
+	}
+	switch style {
+	case "balanced":
+		return body + "\n<!-- session continuity check active -->"
+	case "theatrical":
+		return body + "\n<p>Session trace active. Access monitored.</p>"
+	default:
+		return body
+	}
 }

@@ -50,6 +50,10 @@ func NewDefault() *Engine {
 }
 
 func (e *Engine) Pick(sessionID string, rotateEvery time.Duration, now time.Time) Pack {
+	return e.PickWithSignature(sessionID, "", rotateEvery, now)
+}
+
+func (e *Engine) PickWithSignature(sessionID, signatureID string, rotateEvery time.Duration, now time.Time) Pack {
 	if len(e.packs) == 0 {
 		return Pack{ID: "none"}
 	}
@@ -57,7 +61,11 @@ func (e *Engine) Pick(sessionID string, rotateEvery time.Duration, now time.Time
 		rotateEvery = 15 * time.Minute
 	}
 	bucket := now.Unix() / int64(rotateEvery.Seconds())
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", sessionID, bucket)))
+	seed := sessionID
+	if signatureID != "" {
+		seed = signatureID
+	}
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", seed, bucket)))
 	idx := int(h[0]) % len(e.packs)
 	return e.packs[idx]
 }

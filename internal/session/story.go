@@ -3,6 +3,7 @@ package session
 import (
 	"crypto/sha1"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,6 +14,14 @@ const (
 	PhaseObserve Phase = "observe"
 	PhaseEngage  Phase = "engage"
 	PhaseSink    Phase = "sink"
+)
+
+type PresenceState string
+
+const (
+	PresenceObserve  PresenceState = "observe"
+	PresenceLockOn   PresenceState = "lock-on"
+	PresencePressure PresenceState = "pressure"
 )
 
 type Story struct {
@@ -88,4 +97,27 @@ func (s *Store) gc(now time.Time) {
 			delete(s.items, k)
 		}
 	}
+}
+
+func PresenceForScore(score, lockOnThreshold, pressureThreshold int, hostile bool) PresenceState {
+	if !hostile {
+		return ""
+	}
+	switch {
+	case score >= pressureThreshold:
+		return PresencePressure
+	case score >= lockOnThreshold:
+		return PresenceLockOn
+	default:
+		return PresenceObserve
+	}
+}
+
+func PresenceTransition(prev, curr PresenceState) string {
+	if prev == "" || curr == "" || prev == curr {
+		return "none"
+	}
+	from := strings.ReplaceAll(string(prev), "-", "_")
+	to := strings.ReplaceAll(string(curr), "-", "_")
+	return from + "_to_" + to
 }
